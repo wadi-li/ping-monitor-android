@@ -10,6 +10,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Native HTTP/TCP/ICMP transport. TLS certificate and hostname validation stay enabled. */
 public final class Probe implements Callable<Probe.Answer> {
     public static final int OK=0, WARN=1, DOWN=2;
+    private static final ExecutorService DISCONNECTORS=new ThreadPoolExecutor(
+        2,2,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(100),
+        r->{Thread t=new Thread(r,"transport-cancel");t.setDaemon(true);return t;},
+        new ThreadPoolExecutor.DiscardPolicy());
     public static final class Answer {
         public final int kind;
         public final long ms;
@@ -25,7 +29,8 @@ public final class Probe implements Callable<Probe.Answer> {
     public Probe(Target target,int timeout) { this.target=target; this.timeout=timeout; }
     public void cancel() {
         cancelled.set(true);
-        HttpURLConnection c=connection; if(c!=null) c.disconnect();
+        // Some HTTP implementations can block in disconnect. Never do it on Android's UI thread.
+        HttpURLConnection c=connection; if(c!=null) DISCONNECTORS.execute(c::disconnect);
         Socket s=socket; if(s!=null) try{s.close();}catch(IOException ignored){}
         Process p=process; if(p!=null) p.destroy();
     }

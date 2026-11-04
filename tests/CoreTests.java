@@ -79,6 +79,16 @@ public final class CoreTests {
             try(ServerSocket s=new ServerSocket(0)){unused=s.getLocalPort();}
             eq(Probe.DOWN,new Probe(Target.parse("tcp://127.0.0.1:"+unused),500).call().kind,"TCP closed");
             Probe p=new Probe(Target.parse(base+"/ok"),1000);p.cancel();eq(Probe.DOWN,p.call().kind,"cancelled before start");
+            ExecutorService cancelPool=Executors.newSingleThreadExecutor();
+            try {
+                Probe slow=new Probe(Target.parse(base+"/slow"),2500);
+                Future<Probe.Answer> f=cancelPool.submit(slow);
+                Thread.sleep(80);
+                long cancelStart=System.nanoTime();
+                slow.cancel();
+                check(TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-cancelStart)<200,"cancel does not block caller");
+                eq(Probe.DOWN,f.get(3,TimeUnit.SECONDS).kind,"in-flight cancellation");
+            } finally {cancelPool.shutdownNow();}
         } finally {server.stop(0);serverPool.shutdownNow();}
         System.out.println("PASS: "+checks+" checks, including real local HTTP/TCP integration");
     }

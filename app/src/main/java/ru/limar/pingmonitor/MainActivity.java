@@ -154,7 +154,8 @@ public final class MainActivity extends Activity {
             if(!item.enabled)disabled++;else if(kind==Probe.OK)ok++;else if(kind==Probe.DOWN)down++;else warn++;
             newest=Math.max(newest,h.updated);
             Card c=cardViews.get(item.target.value);if(c==null)continue;
-            int color=!item.enabled?MonitorService.GRAY:MonitorService.color(kind);
+            int color=!item.enabled?(dark?0xffa6b4bd:MonitorService.GRAY):
+                dark?(kind==Probe.OK?0xff70d7a0:kind==Probe.DOWN?0xffff8c8c:0xfff5cc75):MonitorService.color(kind);
             c.title.setText((config.items.indexOf(item)+1)+".  ●  "+item.target.value);
             c.title.setTextColor(color);
             c.box.setBackground(background(cardBg,color));

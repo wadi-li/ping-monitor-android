@@ -93,10 +93,12 @@ public final class MonitorService extends Service {
                         int end=Math.min(base+10,enabled.size());
                         for(int i=base;i<end;i++) {
                             Probe p=new Probe(enabled.get(i).target,c.timeout);
-                            probes.add(p);
-                            synchronized(active){active.add(p);}
-                            try {futures.add(pool.submit(p));}
-                            catch(RejectedExecutionException ex) {futures.add(null);}
+                            synchronized(active) {
+                                if(!running || version!=generation)break;
+                                probes.add(p);active.add(p);
+                                try {futures.add(pool.submit(p));}
+                                catch(RejectedExecutionException ex) {futures.add(null);}
+                            }
                         }
                         long deadline=SystemClock.elapsedRealtime()+c.timeout+200;
                         for(int i=0;i<probes.size();i++) {
