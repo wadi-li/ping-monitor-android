@@ -1,0 +1,27 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'ru.limar.pingmonitor'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'ru.limar.pingmonitor'
+        minSdk 26
+        targetSdk 35
+        versionCode 10000
+        versionName '1.0.0'
+        testInstrumentationRunner 'ru.limar.pingmonitor.SmokeInstrumentation'
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Personal/sideload build. Do not ship the debug key as a production signing key.
+            signingConfig signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    lint { abortOnError true }
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
