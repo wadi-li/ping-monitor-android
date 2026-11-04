@@ -77,7 +77,7 @@ jobs:
             mkdir -p screenshots
             adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/light.png screenshots/
             adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/dark.png screenshots/
-            adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/notification.png screenshots/
+            adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/notification-layout.png screenshots/
       - uses: actions/upload-artifact@v4
         if: always()
         with:

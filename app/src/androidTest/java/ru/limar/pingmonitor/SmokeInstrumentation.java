@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 /** No third-party test runtime: emulator regression test using Android Instrumentation. */
+@android.annotation.TargetApi(35)
 public final class SmokeInstrumentation extends Instrumentation {
     private int checks;
     private Activity activity;
@@ -52,10 +53,10 @@ public final class SmokeInstrumentation extends Instrumentation {
         }
         bitmap.recycle();
     }
-    private void shell(String command) throws IOException {
-        try(InputStream in=new ParcelFileDescriptor.AutoCloseInputStream(getUiAutomation().executeShellCommand(command))) {
-            byte[] buffer=new byte[1024];while(in.read(buffer)!=-1){/* wait until command completes */}
-        }
+    private Notification currentNotification(Context context) {
+        for(android.service.notification.StatusBarNotification n:context.getSystemService(NotificationManager.class).getActiveNotifications())
+            if(n.getId()==101)return n.getNotification();
+        return null;
     }
     @Override public void onStart() {
         Bundle result=new Bundle();
@@ -102,9 +103,23 @@ public final class SmokeInstrumentation extends Instrumentation {
             screenshot("dark");
             click("Светлая",false);
             screenshot("light");
-            shell("cmd statusbar expand-notifications");
-            screenshot("notification");
-            shell("cmd statusbar collapse");
+            await(()->{
+                Notification n=currentNotification(context);
+                return n!=null && n.getSmallIcon()!=null && n.getSmallIcon().getResId()==R.drawable.ic_down;
+            },5000,"foreground down notification registered with Android");
+            Notification notification=currentNotification(context);
+            check((notification.flags&Notification.FLAG_FOREGROUND_SERVICE)!=0,"notification is foreground service");
+            check(notification.getSmallIcon().getResId()==R.drawable.ic_down,"aggregate down status icon");
+            check(notification.getLargeIcon()!=null,"colored aggregate icon present");
+            check(notification.bigContentView!=null,"expanded status layout present");
+            AlertDialog[] preview=new AlertDialog[1];
+            runOnMainSync(()->{
+                View view=notification.bigContentView.apply(activity,null);
+                preview[0]=new AlertDialog.Builder(activity).setTitle("Уведомление: проверка макета")
+                    .setView(view).setPositiveButton("Закрыть",null).show();
+            });
+            screenshot("notification-layout");
+            runOnMainSync(()->preview[0].dismiss());
             int before=counts.getOrDefault("/ok",0);
             runOnMainSync(()->activity.moveTaskToBack(true));
             await(()->counts.getOrDefault("/ok",0)>before,10000,"requests continue with activity in background");
