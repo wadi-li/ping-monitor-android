@@ -73,6 +73,7 @@ jobs:
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell pm grant ru.limar.pingmonitor android.permission.POST_NOTIFICATIONS
             adb shell am instrument -w ru.limar.pingmonitor.test/ru.limar.pingmonitor.SmokeInstrumentation | tee android-smoke.log
+            adb logcat -d -v threadtime -t 1000 > android-logcat.log
             grep -E 'PASS: .* Android instrumentation checks' android-smoke.log
             mkdir -p screenshots
             adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/light.png screenshots/
@@ -87,4 +88,5 @@ jobs:
           name: android-smoke-results
           path: |
             android-smoke.log
+            android-logcat.log
             screenshots/

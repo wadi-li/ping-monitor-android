@@ -44,6 +44,14 @@ public final class SmokeInstrumentation extends Instrumentation {
         waitForIdleSync();
     }
     private MainActivity main(){return (MainActivity)activity;}
+    private ActivityMonitor documentMonitor(String action,File file) {
+        IntentFilter filter=new IntentFilter(action);filter.addCategory(Intent.CATEGORY_OPENABLE);
+        try{filter.addDataType("*/*");}catch(IntentFilter.MalformedMimeTypeException e){throw new AssertionError(e);}
+        check(filter.match(getTargetContext().getContentResolver(),
+            new Intent(action).setType(action.equals(Intent.ACTION_OPEN_DOCUMENT)?"*/*":"image/png")
+                .addCategory(Intent.CATEGORY_OPENABLE),true,"document-test")>=0,"document monitor matches MIME and OPENABLE");
+        return addMonitor(filter,new ActivityResult(Activity.RESULT_OK,new Intent().setData(Uri.fromFile(file))),true);
+    }
     private void clickDialog(AlertDialog dialog,String text) {
         runOnMainSync(()->{
             check(dialog!=null && dialog.isShowing(),"dialog showing for "+text);
@@ -180,11 +188,11 @@ public final class SmokeInstrumentation extends Instrumentation {
             check(chart!=null && chart.getDrawable() instanceof BitmapDrawable,"graph preview is a bitmap image");
             check(((BitmapDrawable)chart.getDrawable()).getBitmap().getWidth()==1200,"PNG preview full resolution");
             File pngFile=new File(context.getCacheDir(),"test-chart.png");
-            ActivityMonitor pngMonitor=addMonitor(new IntentFilter(Intent.ACTION_CREATE_DOCUMENT),
-                new ActivityResult(Activity.RESULT_OK,new Intent().setData(Uri.fromFile(pngFile))),true);
+            ActivityMonitor pngMonitor=documentMonitor(Intent.ACTION_CREATE_DOCUMENT,pngFile);
             clickDialog(main().graphDialog,"Сохранить PNG");
+            check(pngMonitor.getHits()==1,"PNG uses system create-document flow");
             await(()->pngFile.length()>0,5000,"PNG saved by document result handler");
-            check(pngMonitor.getHits()==1,"PNG uses system create-document flow");removeMonitor(pngMonitor);
+            removeMonitor(pngMonitor);
             Bitmap decoded=BitmapFactory.decodeFile(pngFile.getAbsolutePath());
             check(decoded!=null && decoded.getWidth()==1200 && decoded.getHeight()==400,"saved PNG decodes with expected dimensions");
             if(decoded!=null)decoded.recycle();
@@ -211,11 +219,11 @@ public final class SmokeInstrumentation extends Instrumentation {
             openTransfer();
             check(find(main().transferDialog.getWindow().getDecorView(),"Загрузить список серверов",false)!=null,"import entry in separate menu");
             File listFile=new File(context.getCacheDir(),"test-servers.csv");
-            ActivityMonitor listMonitor=addMonitor(new IntentFilter(Intent.ACTION_CREATE_DOCUMENT),
-                new ActivityResult(Activity.RESULT_OK,new Intent().setData(Uri.fromFile(listFile))),true);
+            ActivityMonitor listMonitor=documentMonitor(Intent.ACTION_CREATE_DOCUMENT,listFile);
             clickDialog(main().transferDialog,"Сохранить список серверов");
+            check(listMonitor.getHits()==1,"list export uses create-document flow");
             await(()->listFile.length()>0,5000,"server list export file written");
-            check(listMonitor.getHits()==1,"list export uses create-document flow");removeMonitor(listMonitor);
+            removeMonitor(listMonitor);
             String exported=new String(java.nio.file.Files.readAllBytes(listFile.toPath()),StandardCharsets.UTF_8);
             check(exported.startsWith("\uFEFF"),"export file UTF-8 BOM");
             check(Csv.importTargets(exported).split("\\n")[0].equals(base+"/bad"),"export keeps custom order");
@@ -224,8 +232,7 @@ public final class SmokeInstrumentation extends Instrumentation {
             click("Не опрашивать "+base+"/bad",true);
             click("Переместить выше "+base+"/ok",true);
             openTransfer();
-            ActivityMonitor importMonitor=addMonitor(new IntentFilter(Intent.ACTION_OPEN_DOCUMENT),
-                new ActivityResult(Activity.RESULT_OK,new Intent().setData(Uri.fromFile(listFile))),true);
+            ActivityMonitor importMonitor=documentMonitor(Intent.ACTION_OPEN_DOCUMENT,listFile);
             clickDialog(main().transferDialog,"Загрузить список серверов");
             check(importMonitor.getHits()==1,"import uses open-document flow");removeMonitor(importMonitor);
             check(main().importDialog!=null && main().importDialog.isShowing(),"import asks before replacing list");
