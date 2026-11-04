@@ -2,6 +2,7 @@ package ru.limar.pingmonitor;
 
 import android.app.*;
 import android.content.*;
+import android.graphics.Bitmap;
 import android.os.*;
 import android.view.*;
 import android.widget.*;
@@ -39,6 +40,15 @@ public final class SmokeInstrumentation extends Instrumentation {
         long end=SystemClock.elapsedRealtime()+timeout;
         while(SystemClock.elapsedRealtime()<end){if(test.getAsBoolean()){check(true,message);return;}SystemClock.sleep(100);}
         check(false,message);
+    }
+    private void screenshot(String name) throws IOException {
+        waitForIdleSync();
+        Bitmap bitmap=getUiAutomation().takeScreenshot();
+        check(bitmap!=null,"screenshot "+name);
+        try(OutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),name+".png"))) {
+            bitmap.compress(Bitmap.CompressFormat.PNG,100,out);
+        }
+        bitmap.recycle();
     }
     @Override public void onStart() {
         Bundle result=new Bundle();
@@ -80,6 +90,11 @@ public final class SmokeInstrumentation extends Instrumentation {
             click("Опрашивать "+base+"/bad",true);
             await(()->store.loadResults().containsKey(base+"/bad"),10000,"resume starts requests");
             check(store.loadResults().get(base+"/bad").kind==Probe.DOWN,"HTTP 500 red at threshold 1");
+            click("Тёмная",false);
+            check(store.prefs().getBoolean("dark",false),"dark theme persisted");
+            screenshot("dark");
+            click("Светлая",false);
+            screenshot("light");
             int before=counts.getOrDefault("/ok",0);
             runOnMainSync(()->activity.moveTaskToBack(true));
             await(()->counts.getOrDefault("/ok",0)>before,10000,"requests continue with activity in background");
