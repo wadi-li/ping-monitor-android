@@ -33,11 +33,17 @@ jobs:
             chmod 600 "$HOME/.android/debug.keystore"
           fi
       - run: bash tools/test-core.sh
-      - run: gradle --no-daemon :app:assembleRelease :app:lintDebug
+      - run: gradle --no-daemon --no-build-cache :app:assembleRelease :app:lintDebug
+      - name: Verify stable APK signing identity
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | tee signing-report.txt
+          grep -F '5f2486bed7801f2990bf2df4d8eb2dbead4cd914330032f4e24c4175804a03fd' signing-report.txt
       - uses: actions/upload-artifact@v4
         with:
           name: ping-monitor-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: |
+            app/build/outputs/apk/release/*.apk
+            signing-report.txt
   android-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -71,6 +77,7 @@ jobs:
             mkdir -p screenshots
             adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/light.png screenshots/
             adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/dark.png screenshots/
+            adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/notification.png screenshots/
       - uses: actions/upload-artifact@v4
         if: always()
         with:

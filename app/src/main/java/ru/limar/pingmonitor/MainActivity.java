@@ -96,6 +96,15 @@ public final class MainActivity extends Activity {
         cards=vertical();cards.setPadding(0,dp(8),0,dp(20));
         scroll.addView(cards);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
+        root.post(()->{
+            if(Build.VERSION.SDK_INT>=30) {
+                WindowInsetsController controller=getWindow().getInsetsController();
+                if(controller!=null) {
+                    int mask=WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                    controller.setSystemBarsAppearance(dark?0:mask,mask);
+                }
+            }
+        });
         rebuildCards();
     }
     private void rebuildCards() {
@@ -183,6 +192,7 @@ public final class MainActivity extends Activity {
     private long staleMillis(){return (config.interval+((config.items.size()+9)/10)*(config.timeout/1000+1)+15)*2000L;}
     private static String number(double n){return n<0?"–":String.format(Locale.US,"%.1f",n);}
     private static String time(long ms){return new SimpleDateFormat("dd.MM HH:mm:ss",Locale.getDefault()).format(new Date(ms));}
+    private static String timestamp(long ms){return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX",Locale.US).format(new Date(ms));}
     private void startMonitoring() {
         if(config.items.stream().noneMatch(i->i.enabled)){alert("Включите хотя бы один адрес кнопкой «Опрашивать».");return;}
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) {
@@ -346,7 +356,7 @@ public final class MainActivity extends Activity {
                         System.currentTimeMillis()-h.updated>staleMillis()?"Данные устарели":Health.label(h.kind);
                     csv.append(Csv.row(++i,item.target.value,item.enabled?"Да":"Нет",status,
                         h.history.isEmpty()?-1:h.history.get(h.history.size()-1),number(h.average10()),h.min,h.max,
-                        number(h.loss()),h.attempts,h.failures,h.streak,h.updated==0?"":time(h.updated),h.detail));
+                        number(h.loss()),h.attempts,h.failures,h.streak,h.updated==0?"":timestamp(h.updated),h.detail));
                 }
                 try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")) {
                     if(out==null)throw new IOException("Файл не открыт");

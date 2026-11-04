@@ -43,12 +43,19 @@ public final class SmokeInstrumentation extends Instrumentation {
     }
     private void screenshot(String name) throws IOException {
         waitForIdleSync();
+        // SystemUI applies theme changes in a different process; target-process idle is insufficient.
+        SystemClock.sleep(500);
         Bitmap bitmap=getUiAutomation().takeScreenshot();
         check(bitmap!=null,"screenshot "+name);
         try(OutputStream out=new FileOutputStream(new File(getTargetContext().getExternalFilesDir(null),name+".png"))) {
             bitmap.compress(Bitmap.CompressFormat.PNG,100,out);
         }
         bitmap.recycle();
+    }
+    private void shell(String command) throws IOException {
+        try(InputStream in=new ParcelFileDescriptor.AutoCloseInputStream(getUiAutomation().executeShellCommand(command))) {
+            byte[] buffer=new byte[1024];while(in.read(buffer)!=-1){/* wait until command completes */}
+        }
     }
     @Override public void onStart() {
         Bundle result=new Bundle();
@@ -95,6 +102,9 @@ public final class SmokeInstrumentation extends Instrumentation {
             screenshot("dark");
             click("Светлая",false);
             screenshot("light");
+            shell("cmd statusbar expand-notifications");
+            screenshot("notification");
+            shell("cmd statusbar collapse");
             int before=counts.getOrDefault("/ok",0);
             runOnMainSync(()->activity.moveTaskToBack(true));
             await(()->counts.getOrDefault("/ok",0)>before,10000,"requests continue with activity in background");

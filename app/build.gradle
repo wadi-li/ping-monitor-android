@@ -11,6 +11,12 @@ android {
         versionName '1.0.0'
         testInstrumentationRunner 'ru.limar.pingmonitor.SmokeInstrumentation'
     }
+    signingConfigs {
+        debug {
+            // Do not rely on the SDK's platform-dependent default Android user-home directory.
+            storeFile file("${System.getProperty('user.home')}/.android/debug.keystore")
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
