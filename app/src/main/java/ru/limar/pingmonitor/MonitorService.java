@@ -76,7 +76,7 @@ public final class MonitorService extends Service {
             while(running) {
                 final int version=generation;
                 Store.Config c=store.config();
-                updateWake(c.keepAwake);
+                updateWake(c.keepAwake && c.items.stream().anyMatch(item->item.enabled));
                 List<Store.Item> enabled=new ArrayList<>();
                 for(Store.Item item:c.items) if(item.enabled) enabled.add(item);
                 Network network=connectivity.getActiveNetwork();
