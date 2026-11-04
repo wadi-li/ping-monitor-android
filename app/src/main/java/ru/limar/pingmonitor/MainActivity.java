@@ -5,6 +5,8 @@ import android.app.*;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.content.res.ColorStateList;
+import android.content.res.Resources;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -54,7 +56,9 @@ public final class MainActivity extends Activity {
     private void resolveTheme() {
         dark=themeMode==2 || (themeMode==0 &&
             (getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES);
-        setTheme(dark?android.R.style.Theme_Material_NoActionBar:android.R.style.Theme_Material_Light_NoActionBar);
+        int style=dark?android.R.style.Theme_Material_NoActionBar:android.R.style.Theme_Material_Light_NoActionBar;
+        Resources.Theme clean=getResources().newTheme();clean.applyStyle(style,true);
+        getTheme().setTo(clean);setTheme(style);
     }
     private void chooseTheme() {
         if(settingsDialog!=null && settingsDialog.isShowing())settingsDialog.dismiss();
@@ -75,6 +79,10 @@ public final class MainActivity extends Activity {
     }
     private Button button(String label,Runnable action) {
         Button b=new Button(this);b.setText(label);b.setTextSize(12);b.setAllCaps(false);
+        int[][] states={new int[]{android.R.attr.state_enabled},new int[]{}};
+        b.setTextColor(new ColorStateList(states,new int[]{fg,dark?0xff84959f:0xff84949c}));
+        b.setBackgroundTintList(new ColorStateList(states,new int[]{
+            dark?0xff334751:0xffdce7ec,dark?0xff23323a:0xffe8eef1}));
         b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(dp(7),dp(3),dp(7),dp(3));
         b.setOnClickListener(v->action.run());return b;
     }

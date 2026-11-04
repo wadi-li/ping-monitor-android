@@ -67,6 +67,12 @@ public final class SmokeInstrumentation extends Instrumentation {
             list.performItemClick(list.getChildAt(mode),mode,list.getAdapter().getItemId(mode));
         });waitForIdleSync();
     }
+    private void checkButtonPalette(boolean dark) {
+        Button button=(Button)find(activity.getWindow().getDecorView(),"Настройки",false);
+        check(button.getCurrentTextColor()==(dark?0xffe6edf0:0xff1e3039),"button foreground follows current theme");
+        check(button.getBackgroundTintList().getColorForState(new int[]{android.R.attr.state_enabled},0)==
+            (dark?0xff334751:0xffdce7ec),"button background follows current theme");
+    }
     private void openTransfer() {
         click("Настройки",false);clickDialog(main().settingsDialog,"Import / Export");
     }
@@ -151,10 +157,12 @@ public final class SmokeInstrumentation extends Instrumentation {
             await(()->store.loadResults().containsKey(base+"/bad"),10000,"resume starts requests");
             check(store.loadResults().get(base+"/bad").kind==Probe.DOWN,"HTTP 500 red at threshold 1");
             selectTheme(2);
+            checkButtonPalette(true);
             check(store.prefs().getInt("themeMode",-1)==2,"dark theme persisted");
             screenshot("dark");
             layoutScreenshot("layout-dark");
             selectTheme(1);
+            checkButtonPalette(false);
             check(store.prefs().getInt("themeMode",-1)==1,"light theme persisted");
             screenshot("light");
             layoutScreenshot("layout-light");
@@ -176,6 +184,7 @@ public final class SmokeInstrumentation extends Instrumentation {
             screenshot("notification-layout");
             runOnMainSync(()->preview[0].dismiss());
             click("Свернуть список серверов",false);
+            checkButtonPalette(false);
             check(store.prefs().getBoolean("compactList",false),"compact mode persisted");
             View row=compactRow(base+"/bad");
             check(row instanceof LinearLayout && ((LinearLayout)row).getOrientation()==LinearLayout.HORIZONTAL,"compact server occupies a horizontal row");
@@ -258,6 +267,7 @@ public final class SmokeInstrumentation extends Instrumentation {
             activity=changed;waitForIdleSync();
             boolean night=(activity.getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES;
             check(night!=initialNight,"system night configuration actually changed");
+            checkButtonPalette(night);
             View root=(View)find(activity.getWindow().getDecorView(),"Пинг-монитор",false).getParent().getParent();
             check(((ColorDrawable)root.getBackground()).getColor()==(night?0xff111a20:0xfff3f6f7),"system theme follows Android appearance");
             check(store.prefs().getInt("themeMode",-1)==0,"system mode survives configuration change");
