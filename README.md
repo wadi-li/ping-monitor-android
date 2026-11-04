@@ -1,10 +1,10 @@
-[![Скачать Ping Monitor](docs/download-ping-monitor.svg)](https://github.com/wadi-li/ping-monitor-android/releases/latest/download/ping-monitor.apk)
+[![СКАЧАТЬ](docs/download-ping-monitor.svg)](https://github.com/wadi-li/ping-monitor-android/releases/latest/download/ping-monitor.apk)
 
 # Пинг-монитор для Android
 
 Нативное приложение для постоянного контроля доступности 1–50 выбранных адресов. Мониторинг выполняет Android foreground service, а не HTML-страница или WebView. Интернет нужен только для проверяемых сетевых адресов: CDN, аналитики, рекламы и обязательного облачного сервера нет.
 
-Исходники и APK находятся в приватном проекте [ping-monitor-android](https://github.com/wadi-li/ping-monitor-android). Для установки выбирайте опубликованный релиз, а не промежуточные APK из старых прогонов Actions.
+Исходники и APK находятся в публичном проекте [ping-monitor-android](https://github.com/wadi-li/ping-monitor-android). Для установки выбирайте опубликованный релиз, а не промежуточные APK из старых прогонов Actions.
 
 ## Возможности
 
@@ -24,7 +24,7 @@
 
 Краткая памятка для телефона: [docs/USER_GUIDE.md](docs/USER_GUIDE.md). Она также приложена к опубликованному релизу отдельным Markdown-файлом.
 
-1. Нажмите большую кнопку «Скачать Ping Monitor» в начале README или скачайте `ping-monitor-1.1.0.apk` из Releases. `ping-monitor.apk` в том же релизе является идентичной копией для постоянной ссылки загрузки.
+1. Нажмите большую кнопку «СКАЧАТЬ» в начале README или скачайте `ping-monitor-1.1.0.apk` из Releases. `ping-monitor.apk` в том же релизе является идентичной копией для постоянной ссылки загрузки.
 2. Разрешите установку из выбранного источника, если Android запросит это.
 3. Откройте приложение. Разрешите уведомления: без них приложение намеренно не запускает мониторинг, чтобы индикатор не оказался невидимым.
 4. Нажмите «Добавить», введите нужные адреса, по одному на строку. Начальный `https://google.com/` можно изменить нажатием на адрес или удалить в его диалоге.
@@ -100,7 +100,7 @@ APK: `app/build/outputs/apk/release/app-release.apk`. Gradle Wrapper закре�
 
 ### Подпись APK
 
-Текущая личная sideload-сборка подписывается Android debug-ключом, но собрана как `release` и не включает `android:debuggable=true`. Это не ключ для публикации в Google Play. Ключ не находится в Git; его копия сохранена как Actions secret `ANDROID_SIGNING_KEYSTORE` этого приватного репозитория, чтобы последующие CI-сборки могли обновлять уже установленный APK.
+Текущая личная sideload-сборка подписывается Android debug-ключом, но собрана как `release` и не включает `android:debuggable=true`. Это не ключ для публикации в Google Play. Ключ не находится в Git; его копия сохранена как Actions secret `ANDROID_SIGNING_KEYSTORE` этого репозитория, чтобы последующие CI-сборки могли обновлять уже установленный APK.
 
 Локальная сборка на другой машине с другим debug-ключом не обновит установленное приложение: нужен тот же ключ либо удаление приложения с потерей локальных данных. Не удаляйте Actions secret, если хотите сохранить возможность совместимых обновлений.
 
