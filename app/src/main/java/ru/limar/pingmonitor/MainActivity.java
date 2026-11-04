@@ -4,12 +4,14 @@ import android.Manifest;
 import android.app.*;
 import android.content.*;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.*;
 import android.provider.Settings;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.view.*;
 import android.widget.*;
 import java.io.*;
@@ -23,15 +25,18 @@ public final class MainActivity extends Activity {
     private LinearLayout root,cards;
     private TextView summary;
     private Button start,stop;
-    private boolean dark;
+    private boolean dark,compact;
+    private int themeMode;
     private int bg,fg,muted,cardBg;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private final Map<String,Card> cardViews=new LinkedHashMap<>();
     private String lastResults="",lastReason="";
     private boolean lastAlive;
-    private Bitmap pendingBitmap;
+    private byte[] pendingPng;
+    private String pendingServerList;
+    AlertDialog graphDialog,deleteDialog,themeDialog,transferDialog,settingsDialog,importDialog;
     private final Runnable refresh=new Runnable(){@Override public void run(){update();handler.postDelayed(this,1000);}};
-    private static final int IMPORT=21,EXPORT=22,PNG=23,NOTIFY=24;
+    private static final int IMPORT=21,EXPORT=22,PNG=23,NOTIFY=24,LIST_EXPORT=25;
     private static final class Card {
         TextView title,metrics,detail;
         LinearLayout box;
@@ -39,8 +44,25 @@ public final class MainActivity extends Activity {
     }
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        store=new Store(this);config=store.config();dark=store.prefs().getBoolean("dark",false);
+        store=new Store(this);config=store.config();
+        themeMode=store.prefs().getInt("themeMode",store.prefs().getBoolean("dark",false)?2:1);
+        if(themeMode<0 || themeMode>2)themeMode=1;
+        compact=store.prefs().getBoolean("compactList",false);
+        if(state!=null){pendingPng=state.getByteArray("pendingPng");pendingServerList=state.getString("pendingServerList");}
         build();
+    }
+    private void resolveTheme() {
+        dark=themeMode==2 || (themeMode==0 &&
+            (getResources().getConfiguration().uiMode&Configuration.UI_MODE_NIGHT_MASK)==Configuration.UI_MODE_NIGHT_YES);
+        setTheme(dark?android.R.style.Theme_Material_NoActionBar:android.R.style.Theme_Material_Light_NoActionBar);
+    }
+    private void chooseTheme() {
+        if(settingsDialog!=null && settingsDialog.isShowing())settingsDialog.dismiss();
+        themeDialog=new AlertDialog.Builder(this).setTitle("Тема оформления")
+            .setSingleChoiceItems(new String[]{"Как в системе","Светлая","Тёмная"},themeMode,(dialog,index)->{
+                themeMode=index;store.prefs().edit().putInt("themeMode",index).apply();
+                dialog.dismiss();build();update();
+            }).setNegativeButton("Отмена",null).show();
     }
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
     private LinearLayout vertical(){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);return v;}
@@ -60,6 +82,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(48),1);lp.setMargins(dp(2),0,dp(2),0);row.addView(b,lp);
     }
     private void build() {
+        resolveTheme();
         bg=dark?0xff111a20:0xfff3f6f7;fg=dark?0xffe6edf0:0xff1e3039;
         muted=dark?0xffa9b7bf:0xff536871;cardBg=dark?0xff1c2931:Color.WHITE;
         getWindow().setStatusBarColor(bg);getWindow().setNavigationBarColor(bg);
@@ -81,9 +104,8 @@ public final class MainActivity extends Activity {
         LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);
         TextView title=text("Пинг-монитор",24,fg);title.setTypeface(null,Typeface.BOLD);
         header.addView(title,new LinearLayout.LayoutParams(0,dp(48),1));
-        header.addView(button(dark?"Светлая":"Тёмная",()->{
-            dark=!dark;store.prefs().edit().putBoolean("dark",dark).apply();build();update();
-        }));
+        Button themeButton=button("Тема: "+(themeMode==0?"система":dark?"тёмная":"светлая"),this::chooseTheme);
+        themeButton.setContentDescription("Выбрать тему оформления");header.addView(themeButton);
         root.addView(header);
         summary=text("",14,muted);summary.setPadding(0,dp(5),0,dp(9));root.addView(summary);
         LinearLayout controls=new LinearLayout(this);
@@ -91,7 +113,10 @@ public final class MainActivity extends Activity {
         addButton(controls,start);addButton(controls,stop);addButton(controls,button("Настройки",this::settings));root.addView(controls);
         LinearLayout tools=new LinearLayout(this);
         addButton(tools,button("Добавить",()->editAddress(null)));
-        addButton(tools,button("Импорт",this::importFile));addButton(tools,button("CSV-отчёт",this::exportFile));root.addView(tools);
+        Button listMode=button(compact?"Развернуть список серверов":"Свернуть список серверов",()->{
+            compact=!compact;store.prefs().edit().putBoolean("compactList",compact).apply();build();update();
+        });
+        tools.addView(listMode,new LinearLayout.LayoutParams(0,dp(64),2));root.addView(tools);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);
         cards=vertical();cards.setPadding(0,dp(8),0,dp(20));
         scroll.addView(cards);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -115,6 +140,20 @@ public final class MainActivity extends Activity {
             LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,dp(10));
             cards.addView(c.box,lp);
             c.title=text("",15,fg);c.title.setTypeface(null,Typeface.BOLD);
+            if(compact) {
+                c.box.setOrientation(LinearLayout.HORIZONTAL);c.box.setGravity(Gravity.CENTER_VERTICAL);c.box.setMinimumHeight(dp(64));
+                c.title.setSingleLine(true);c.title.setEllipsize(TextUtils.TruncateAt.END);
+                c.box.addView(c.title,new LinearLayout.LayoutParams(0,dp(48),1));
+                c.title.setGravity(Gravity.CENTER_VERTICAL);
+                c.metrics=text("",12,muted);c.metrics.setGravity(Gravity.CENTER);
+                c.metrics.setSingleLine(true);c.box.addView(c.metrics,new LinearLayout.LayoutParams(dp(104),dp(48)));
+                c.graph=new Sparkline(this);c.graph.setCompact(true);
+                c.box.addView(c.graph,new LinearLayout.LayoutParams(dp(72),dp(42)));
+                View.OnClickListener open=v->showGraph(item,c.graph);
+                c.box.setOnClickListener(open);c.title.setOnClickListener(open);
+                c.metrics.setOnClickListener(open);c.graph.setOnClickListener(open);
+                cardViews.put(item.target.value,c);continue;
+            }
             c.title.setPadding(0,0,0,dp(5));c.title.setOnClickListener(v->editAddress(item));
             c.box.addView(c.title);
             c.detail=text("",13,muted);c.box.addView(c.detail);
@@ -132,7 +171,10 @@ public final class MainActivity extends Activity {
             toggle.setContentDescription((item.enabled?"Не опрашивать ":"Опрашивать ")+item.target.value);
             addButton(row,up);addButton(row,down);
             LinearLayout.LayoutParams toggleLp=new LinearLayout.LayoutParams(0,dp(48),1.8f);
-            row.addView(toggle,toggleLp);c.box.addView(row);
+            row.addView(toggle,toggleLp);
+            Button remove=button("Удалить",()->confirmDelete(item));
+            remove.setContentDescription("Удалить "+item.target.value);
+            row.addView(remove,new LinearLayout.LayoutParams(0,dp(48),1.2f));c.box.addView(row);
             cardViews.put(item.target.value,c);
         }
         if(config.items.isEmpty())cards.addView(text("Добавьте адреса для мониторинга.",16,muted));
@@ -143,6 +185,12 @@ public final class MainActivity extends Activity {
         if(other<0 || other>=config.items.size())return;
         Collections.swap(config.items,index,other);
         saveAndReload();rebuildCards();
+    }
+    private void confirmDelete(Store.Item item) {
+        deleteDialog=new AlertDialog.Builder(this).setTitle("Удалить сервер?")
+            .setMessage(item.target.value+"\nАдрес будет удалён из списка опроса.")
+            .setPositiveButton("Удалить",(d,w)->{config.items.remove(item);saveAndReload();rebuildCards();})
+            .setNegativeButton("Отмена",null).show();
     }
     private void saveAndReload() {
         store.save(config);
@@ -168,6 +216,11 @@ public final class MainActivity extends Activity {
             c.title.setText((config.items.indexOf(item)+1)+".  ●  "+item.target.value);
             c.title.setTextColor(color);
             c.box.setBackground(background(cardBg,color));
+            c.box.setContentDescription(item.target.value+"; "+(!item.enabled?"Не опрашивается":Health.label(kind))+
+                "; среднее последних 7 ответов: "+number(h.average7())+" мс");
+            if(compact) {
+                c.metrics.setText("Ср.7: "+number(h.average7())+" мс");
+            } else {
             c.detail.setText(!item.enabled?"Не опрашивается. Исключён из общего статуса.":
                 h.updated==0?"Ожидание первой проверки":(stale?"Данные устарели • ":"")+Health.label(kind)+" • "+h.detail);
             c.metrics.setText(h.updated==0?"Измерений пока нет":
@@ -176,6 +229,7 @@ public final class MainActivity extends Activity {
                 "Мин/макс: "+(h.min<0?"–":h.min)+"/"+(h.max<0?"–":h.max)+
                 " мс • Ошибки: "+String.format(Locale.US,"%.1f",h.loss())+"% ("+h.failures+"/"+h.attempts+")"+
                 "\nПроверено: "+time(h.updated));
+            }
             if(!raw.equals(lastResults) || alive!=lastAlive || !reason.equals(lastReason)) c.graph.set(h,color);
         }
         PowerManager power=getSystemService(PowerManager.class);
@@ -220,7 +274,7 @@ public final class MainActivity extends Activity {
         input.setHint("example.com\nhttp://192.168.1.1/\ntcp://192.168.1.1:443\nicmp://1.1.1.1");
         if(existing!=null)input.setText(existing.target.value);
         LinearLayout box=vertical();box.setPadding(dp(18),dp(8),dp(18),dp(8));
-        box.addView(text("По одному адресу на строку. Без протокола: HTTPS. Нажмите адрес в списке для изменения.",13,0xff536871));box.addView(input);
+        box.addView(text("По одному адресу на строку. Без протокола: HTTPS. Нажмите адрес в списке для изменения.",13,muted));box.addView(input);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle(existing==null?"Добавить адреса":"Изменить адрес")
             .setView(box).setPositiveButton("Сохранить",null).setNegativeButton("Отмена",null)
             .setNeutralButton(existing==null?"Справка":"Удалить",null).create();
@@ -254,7 +308,7 @@ public final class MainActivity extends Activity {
         dialog.show();
     }
     private EditText numeric(LinearLayout box,String label,int value) {
-        box.addView(text(label,14,0xff304951));
+        box.addView(text(label,14,fg));
         EditText e=new EditText(this);e.setSingleLine();e.setInputType(InputType.TYPE_CLASS_NUMBER);e.setText(""+value);box.addView(e);return e;
     }
     private int range(EditText e,int min,int max) {
@@ -274,6 +328,8 @@ public final class MainActivity extends Activity {
             catch(ActivityNotFoundException e){startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())));}
         }));
         box.addView(button("Уведомления",this::openNotificationSettings));
+        box.addView(button("Import / Export",this::transferMenu));
+        box.addView(button("Тема оформления",this::chooseTheme));
         box.addView(button("Справка и ограничения",this::help));
         box.addView(button("Сбросить статистику",()->{
             if(MonitorService.alive){alert("Сначала остановите мониторинг.");return;}
@@ -283,6 +339,7 @@ public final class MainActivity extends Activity {
         }));
         ScrollView scroll=new ScrollView(this);scroll.addView(box);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Настройки").setView(scroll).setPositiveButton("Сохранить",null).setNegativeButton("Отмена",null).create();
+        settingsDialog=dialog;
         dialog.setOnShowListener(v->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(b->{
             try{
                 int i=range(interval,2,3600),t=range(timeout,500,30000),s=range(slow,50,30000),f=range(threshold,1,20);
@@ -293,11 +350,13 @@ public final class MainActivity extends Activity {
         dialog.show();
     }
     private void help() {
-        alert("Пинг-монитор 1.0.0\n\n"+
+        alert("Пинг-монитор 1.1.0\n\n"+
             "HTTPS/HTTP: время до заголовков ответа, включая DNS, TCP и TLS. Это не ICMP-пинг. Путь, протокол и порт сохраняются. HEAD → GET при 405/501. TLS проверяется штатно.\n\n"+
             "TCP: доступность порта. ICMP: системный ping, может блокироваться узлом или прошивкой; root не нужен.\n\n"+
             "Зелёный: успешный ответ, задержка ниже порога, менее 20% ошибок в последних 20 проверках. Жёлтый: первый сбой, медленный ответ, 401/403/429, ожидание или устаревшие данные. Красный: заданное число ошибок подряд.\n\n"+
             "«Выше» / «Ниже»: порядок списка, опроса и уведомления. «Не опрашивать»: адрес сохраняется, запросы и его вклад в общий статус отключаются. Изменения действуют без остановки сервиса; текущий пакет отменяется.\n\n"+
+            "«Свернуть список серверов»: одна строка на адрес, среднее последних 7 ответов и мини-график. Таймауты не считаются нулевыми задержками. Нажмите строку для просмотра PNG; разверните список для управления карточками и удаления.\n\n"+
+            "Настройки → Import / Export: загрузить или сохранить список адресов с порядком и признаками опроса, либо выгрузить отчёт. «Тема оформления»: Светлая, Тёмная или Как в системе.\n\n"+
             "Сервис работает после сворачивания и удаления окна из последних. Для выключенного экрана отключите оптимизацию батареи и разрешите фоновую работу в настройках производителя. Непрерывность после force-stop, перезагрузки или убийства системой не гарантируется. После перезагрузки нажмите «Запуск».\n\n"+
             "В строке состояния Android значки монохромные: круг с галочкой / ! / крестом. Цветные кружки доступны в приложении и раскрытом уведомлении (до 8 адресов, полный список в приложении).\n\n"+
             "График: последние 50 измерений, ошибки разрывают линию. Нажмите график для PNG. CSV: ;, UTF-8 BOM. Импорт: один адрес на строку, строка адресов через ; или отчёт приложения.\n\n"+
@@ -311,20 +370,53 @@ public final class MainActivity extends Activity {
         startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/csv").addCategory(Intent.CATEGORY_OPENABLE)
             .putExtra(Intent.EXTRA_TITLE,"ping-report-"+new SimpleDateFormat("yyyy-MM-dd-HHmmss",Locale.US).format(new Date())+".csv"),EXPORT);
     }
+    private void transferMenu() {
+        LinearLayout box=vertical();box.setPadding(dp(16),dp(8),dp(16),dp(8));
+        box.addView(button("Загрузить список серверов",this::importFile));
+        box.addView(button("Сохранить список серверов",this::saveServerList));
+        box.addView(button("CSV-отчёт со статистикой",this::exportFile));
+        box.addView(text("Список: CSV (;), UTF-8 BOM. Сохраняются порядок адресов и признаки «Опрашивать». Импорт также поддерживает TXT и старые отчёты.",13,muted));
+        transferDialog=new AlertDialog.Builder(this).setTitle("Import / Export").setView(box)
+            .setNegativeButton("Закрыть",null).show();
+    }
+    String serverListCsv() {
+        Map<String,Boolean> servers=new LinkedHashMap<>();
+        for(Store.Item item:config.items)servers.put(item.target.value,item.enabled);
+        return Csv.serverList(servers);
+    }
+    private void saveServerList() {
+        pendingServerList=serverListCsv();
+        startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("text/csv").addCategory(Intent.CATEGORY_OPENABLE)
+            .putExtra(Intent.EXTRA_TITLE,"ping-servers-"+new SimpleDateFormat("yyyy-MM-dd-HHmmss",Locale.US).format(new Date())+".csv"),LIST_EXPORT);
+    }
     private void showGraph(Store.Item item,Sparkline graph) {
         Health h=store.loadResults().getOrDefault(item.target.value,new Health());
         Sparkline view=new Sparkline(this);view.set(h,MonitorService.color(h.kind));
-        LinearLayout box=vertical();box.setPadding(dp(12),0,dp(12),0);box.addView(view,new LinearLayout.LayoutParams(-1,dp(220)));
-        new AlertDialog.Builder(this).setTitle(item.target.host).setView(box).setNegativeButton("Закрыть",null)
+        Bitmap source=view.bitmap();
+        ByteArrayOutputStream buffer=new ByteArrayOutputStream();
+        source.compress(Bitmap.CompressFormat.PNG,100,buffer);source.recycle();
+        final byte[] png=buffer.toByteArray();
+        final Bitmap preview=BitmapFactory.decodeByteArray(png,0,png.length);
+        ImageView image=new ImageView(this);image.setImageBitmap(preview);
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setContentDescription("PNG-график "+item.target.value);
+        LinearLayout box=vertical();box.setPadding(dp(12),0,dp(12),0);
+        box.addView(image,new LinearLayout.LayoutParams(-1,dp(220)));
+        box.addView(text("PNG • последние 50 измерений • среднее 7: "+number(h.average7())+" мс",12,muted));
+        graphDialog=new AlertDialog.Builder(this).setTitle(item.target.value).setView(box).setNegativeButton("Закрыть",null)
             .setPositiveButton("Сохранить PNG",(d,w)->{
-                pendingBitmap=view.bitmap();
+                pendingPng=png;
                 startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("image/png").addCategory(Intent.CATEGORY_OPENABLE)
                     .putExtra(Intent.EXTRA_TITLE,"ping-chart-"+System.currentTimeMillis()+".png"),PNG);
             }).show();
+        graphDialog.setOnDismissListener(d->{image.setImageDrawable(null);if(preview!=null)preview.recycle();});
     }
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
-        if(result!=RESULT_OK || data==null || data.getData()==null)return;
+        if(result!=RESULT_OK || data==null || data.getData()==null) {
+            if(request==PNG)pendingPng=null;
+            if(request==LIST_EXPORT)pendingServerList=null;
+            return;
+        }
         Uri uri=data.getData();
         try {
             if(request==IMPORT) {
@@ -337,12 +429,13 @@ public final class MainActivity extends Activity {
                     content=buffer.toString("UTF-8");
                 }
                 List<Target> imported=Target.parseLines(Csv.importTargets(content));
-                new AlertDialog.Builder(this).setTitle("Импорт "+imported.size()+" адресов")
-                    .setMessage("Заменить список? Порядок берётся из файла. Для совпавших адресов сохранится признак «Не опрашивать». Статистика остаётся для совпавших адресов.")
+                Map<String,Boolean> importedFlags=Csv.importEnabled(content);
+                importDialog=new AlertDialog.Builder(this).setTitle("Импорт "+imported.size()+" адресов")
+                    .setMessage("Заменить список? Порядок берётся из файла. Признаки «Опрашивать» берутся из CSV, а если их нет — сохраняются для совпавших адресов. Статистика остаётся для совпавших адресов.")
                     .setPositiveButton("Заменить",(d,w)->{
                         Map<String,Boolean> flags=new HashMap<>();
                         for(Store.Item i:config.items)flags.put(i.target.value,i.enabled);
-                        config.items.clear();for(Target t:imported)config.items.add(new Store.Item(t,flags.getOrDefault(t.value,true)));
+                        config.items.clear();for(Target t:imported)config.items.add(new Store.Item(t,importedFlags.getOrDefault(t.value,flags.getOrDefault(t.value,true))));
                         saveAndReload();rebuildCards();
                     }).setNegativeButton("Отмена",null).show();
             } else if(request==EXPORT) {
@@ -363,18 +456,33 @@ public final class MainActivity extends Activity {
                     out.write(csv.toString().getBytes(StandardCharsets.UTF_8));
                 }
                 Toast.makeText(this,"Отчёт сохранён",Toast.LENGTH_SHORT).show();
-            } else if(request==PNG && pendingBitmap!=null) {
+            } else if(request==LIST_EXPORT) {
                 try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")) {
                     if(out==null)throw new IOException("Файл не открыт");
-                    pendingBitmap.compress(Bitmap.CompressFormat.PNG,100,out);
+                    out.write((pendingServerList==null?serverListCsv():pendingServerList).getBytes(StandardCharsets.UTF_8));
                 }
-                pendingBitmap.recycle();pendingBitmap=null;
+                pendingServerList=null;
+                Toast.makeText(this,"Список серверов сохранён",Toast.LENGTH_SHORT).show();
+            } else if(request==PNG && pendingPng!=null) {
+                try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")) {
+                    if(out==null)throw new IOException("Файл не открыт");
+                    out.write(pendingPng);
+                }
+                pendingPng=null;
                 Toast.makeText(this,"PNG сохранён",Toast.LENGTH_SHORT).show();
             }
         }catch(Exception e){alert("Ошибка: "+e.getMessage());}
     }
     private void alert(String message){new AlertDialog.Builder(this).setMessage(message).setPositiveButton("OK",null).show();}
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);out.putByteArray("pendingPng",pendingPng);out.putString("pendingServerList",pendingServerList);
+    }
     @Override protected void onResume(){super.onResume();handler.removeCallbacks(refresh);handler.post(refresh);}
     @Override protected void onPause(){handler.removeCallbacks(refresh);super.onPause();}
-    @Override protected void onDestroy(){handler.removeCallbacks(refresh);super.onDestroy();}
+    @Override protected void onDestroy(){
+        handler.removeCallbacks(refresh);
+        for(AlertDialog dialog:new AlertDialog[]{graphDialog,deleteDialog,themeDialog,transferDialog,settingsDialog,importDialog})
+            if(dialog!=null && dialog.isShowing())dialog.dismiss();
+        super.onDestroy();
+    }
 }

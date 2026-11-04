@@ -1,0 +1,50 @@
+name: Publish verified 1.1.0 APK
+on:
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Successful Android build-and-checks run ID
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: publish-1.1.0
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN: ${{ inputs.build_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify passing source and retrieve its exact APK
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN" =~ ^[0-9]+$ ]]
+          test "$(gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" --jq .conclusion)" = success
+          test "$(gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" --jq .path)" = .github/workflows/android.yml
+          VERIFIED_SHA="$(gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" --jq .head_sha)"
+          [[ "$VERIFIED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git diff --exit-code "$VERIFIED_SHA" HEAD -- app tests tools .github/workflows/android.yml build.gradle settings.gradle gradle.properties gradle
+          echo "VERIFIED_SHA=$VERIFIED_SHA" >> "$GITHUB_ENV"
+          gh run download "$BUILD_RUN" --name ping-monitor-apk --dir "$RUNNER_TEMP/verified-apk"
+          grep -F '5f2486bed7801f2990bf2df4d8eb2dbead4cd914330032f4e24c4175804a03fd' "$RUNNER_TEMP/verified-apk/signing-report.txt"
+          mkdir -p release
+          cp "$RUNNER_TEMP/verified-apk/app/build/outputs/apk/release/app-release.apk" release/ping-monitor-1.1.0.apk
+          cp release/ping-monitor-1.1.0.apk release/ping-monitor.apk
+          cp docs/USER_GUIDE.md release/ping-monitor-user-guide.md
+          (cd release && sha256sum ping-monitor-1.1.0.apk ping-monitor.apk > SHA256SUMS.txt)
+      - name: Publish versioned APK and permanent download alias
+        run: |
+          set -euo pipefail
+          if ! gh release view v1.1.0 >/dev/null 2>&1; then
+            gh release create v1.1.0 --draft --target "$VERIFIED_SHA" --title 'Пинг-монитор 1.1.0' --notes-file docs/RELEASE_NOTES_1.1.0.md
+          fi
+          gh release upload v1.1.0 release/ping-monitor-1.1.0.apk release/ping-monitor.apk release/ping-monitor-user-guide.md release/SHA256SUMS.txt --clobber
+          gh release edit v1.1.0 --draft=false --latest --title 'Пинг-монитор 1.1.0' --notes-file docs/RELEASE_NOTES_1.1.0.md

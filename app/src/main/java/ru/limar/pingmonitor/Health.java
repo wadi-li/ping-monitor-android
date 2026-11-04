@@ -25,6 +25,15 @@ public final class Health {
         return history.subList(Math.max(0,history.size()-10),history.size()).stream()
             .filter(x->x>=0).mapToLong(Long::longValue).average().orElse(-1);
     }
+    /** Last seven measured responses, not seven attempts with timeouts counted as zero. */
+    public double average7() {
+        double sum=0;int count=0;
+        for(int i=history.size()-1;i>=0 && count<7;i--) {
+            long value=history.get(i);
+            if(value>=0){sum+=value;count++;}
+        }
+        return count==0?-1:sum/count;
+    }
     public double loss() { return attempts==0?0:100.0*failures/attempts; }
     public static String label(int k) { return k==Probe.OK?"В порядке":k==Probe.DOWN?"Не работает":"Есть проблемы"; }
 }

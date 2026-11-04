@@ -78,6 +78,9 @@ jobs:
             adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/light.png screenshots/
             adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/dark.png screenshots/
             adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/notification-layout.png screenshots/
+            adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/compact.png screenshots/
+            adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/layout-light.png screenshots/
+            adb pull /sdcard/Android/data/ru.limar.pingmonitor/files/layout-dark.png screenshots/
       - uses: actions/upload-artifact@v4
         if: always()
         with:

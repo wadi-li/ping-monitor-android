@@ -36,6 +36,21 @@ public final class CoreTests {
         String report="\uFEFF"+Csv.row("№","Адрес","Опрашивать")+Csv.row(1,"http://a.example/health?x=1;y=2","Да");
         eq("http://a.example/health?x=1;y=2",Csv.importTargets(report),"report roundtrip");
         try{Csv.parse("\"broken");throw new AssertionError();}catch(IllegalArgumentException expected){checks++;}
+        Map<String,Boolean> servers=new LinkedHashMap<>();
+        servers.put("http://b.example/check?a=1;b=2",false);servers.put("https://a.example/",true);
+        String savedList=Csv.serverList(servers);
+        check(savedList.startsWith("\uFEFF"),"server list UTF-8 BOM");
+        eq(new ArrayList<>(servers.keySet()),Arrays.asList(Csv.importTargets(savedList).split("\\n")),"server list order roundtrip");
+        eq(servers,Csv.importEnabled(savedList),"server list enabled flags roundtrip");
+        check(Csv.importEnabled("a.example\nb.example").isEmpty(),"TXT does not overwrite existing flags");
+        check(Csv.importEnabled("№;Домен;Средний\n1;a.example;10").isEmpty(),"legacy report has no enabled flags");
+        eq("https://a.example/",Csv.importTargets("№;Адрес;Опрашивать\n\n1;a.example;Да\n"),"skip blank CSV row");
+        for(String broken:List.of("№;Адрес;Опрашивать\n1;a.example;maybe\n","№;Адрес;Опрашивать\n1\n")) {
+            try{Csv.importEnabled(broken);throw new AssertionError("accepted malformed enabled flag");}
+            catch(IllegalArgumentException expected){checks++;}
+        }
+        try{Csv.importTargets("№;Адрес\n1\n");throw new AssertionError("accepted missing address");}
+        catch(IllegalArgumentException expected){checks++;}
         Health h=new Health();
         eq(Probe.WARN,h.kind,"initial not green");
         h.add(new Probe.Answer(Probe.OK,25,"ok"),1000,3,1);
@@ -51,6 +66,13 @@ public final class CoreTests {
         h.add(new Probe.Answer(Probe.WARN,10,"403"),1000,3,100);eq(Probe.WARN,h.kind,"HTTP limited");eq(0,h.streak,"warn not down");
         for(int i=0;i<110;i++)h.add(new Probe.Answer(Probe.OK,10,"ok"),1000,3,101+i);
         eq(100,h.history.size(),"bounded history");eq(100,h.outcomes.size(),"bounded outcomes");
+        Health seven=new Health();eq(-1.0,seven.average7(),"average7 empty");
+        for(long value:new long[]{10,20,-1,30,40,50,60,70,80,-1,-1})
+            seven.add(new Probe.Answer(value<0?Probe.DOWN:Probe.OK,value,"test"),1000,3,1);
+        eq(50.0,seven.average7(),"last seven measured responses, skip timeouts and oldest response");
+        Health sparse=new Health();sparse.history.add(-1L);sparse.history.add(0L);sparse.history.add(20L);
+        eq(10.0,sparse.average7(),"average7 fewer than seven and zero measurement");
+        sparse.history.clear();sparse.history.add(-1L);eq(-1.0,sparse.average7(),"average7 all timeouts");
         HttpServer server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         ExecutorService serverPool=Executors.newCachedThreadPool();server.setExecutor(serverPool);
         server.createContext("/ok",e->{e.sendResponseHeaders(204,-1);e.close();});

@@ -44,10 +44,41 @@ public final class Csv {
         for(int i=report?1:0;i<rows.size();i++) {
             List<String> row=rows.get(i);
             if(report) {
-                String v=row.get(0).equals("№")?"":row.get(rows.get(0).get(0).equals("№")?1:0);
+                if(row.stream().allMatch(v->v.trim().isEmpty()))continue;
+                int column=rows.get(0).get(0).equals("№")?1:0;
+                if(row.size()<=column)throw new IllegalArgumentException("CSV: нет адреса в строке "+(i+1));
+                String v=row.get(column);
                 if(!v.trim().isEmpty()) result.add(Target.parse(v).value);
             } else for(String v:row) if(!v.trim().isEmpty()) result.add(Target.parse(v).value);
         }
         return String.join("\n",result);
+    }
+    /** Portable address list: order and enabled flags, without accumulated statistics. */
+    public static String serverList(Map<String,Boolean> servers) {
+        StringBuilder out=new StringBuilder("\uFEFF").append(row("№","Адрес","Опрашивать"));
+        int index=0;
+        for(Map.Entry<String,Boolean> entry:servers.entrySet())
+            out.append(row(++index,entry.getKey(),entry.getValue()?"Да":"Нет"));
+        return out.toString();
+    }
+    /** Plain TXT/legacy lists have no flags; preserve existing flags when importing them. */
+    public static Map<String,Boolean> importEnabled(String input) {
+        List<List<String>> rows=parse(input);
+        Map<String,Boolean> flags=new LinkedHashMap<>();
+        if(rows.isEmpty())return flags;
+        List<String> header=rows.get(0);
+        int url=header.indexOf("Адрес"),enabled=header.indexOf("Опрашивать");
+        if(url<0 || enabled<0)return flags;
+        for(int i=1;i<rows.size();i++) {
+            List<String> row=rows.get(i);
+            if(row.stream().allMatch(v->v.trim().isEmpty()))continue;
+            if(row.size()<=Math.max(url,enabled))throw new IllegalArgumentException("CSV: неполная строка "+(i+1));
+            String flag=row.get(enabled).trim().toLowerCase(Locale.ROOT);
+            boolean on=Arrays.asList("да","true","1").contains(flag);
+            if(!on && !Arrays.asList("нет","false","0").contains(flag))
+                throw new IllegalArgumentException("CSV: в поле «Опрашивать» ожидается Да или Нет, строка "+(i+1));
+            flags.put(Target.parse(row.get(url)).value,on);
+        }
+        return flags;
     }
 }
