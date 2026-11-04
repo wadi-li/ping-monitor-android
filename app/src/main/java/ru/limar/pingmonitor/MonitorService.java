@@ -165,7 +165,8 @@ public final class MonitorService extends Service {
         int color=color(aggregate);
         String title=total==0?"Нет включённых адресов":
             "В порядке: "+ok+" • Проблемы: "+warn+" • Не работает: "+down;
-        PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),
+        PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP|Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         PendingIntent stop=PendingIntent.getService(this,1,new Intent(this,MonitorService.class).setAction(STOP),
             PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
